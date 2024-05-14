@@ -1,0 +1,243 @@
+#packages and libraries
+install.packages("igraph")
+install.packages("vctrs")
+install.packages("ggraph") 
+install.packages("gridExtra")
+install.packages("egg")
+install.packages("gtable")
+install.packages("grid")
+install.packages("readr")
+install.packages("blockmodels")
+install.packages("ergm")
+install.packages("network")
+install.packages("latentnet")
+install.packages("colorspace")
+install.packages("plotrix")
+library(plotrix)
+library(RColorBrewer)
+library(colorspace)
+library(igraph)
+library(ggraph)
+library(xtable)
+library(gridExtra) 
+library(egg)
+library(gtable)
+library(grid)
+library(readr)
+library(blockmodels)
+library(ergm)
+library(network)
+library(latentnet)
+
+getwd()
+setwd("D:\\Escritorio\\Tesis")
+
+colors <- brewer.pal(12, "Set3")
+sapply(colors, color.id)
+
+# Graphs theme 
+tema <- theme(panel.background = element_blank(), 
+              legend.title = element_text(color = "#5C5C5C", size = 10, face = 2),
+              plot.title = element_text(face = "bold", 
+                                        colour = "tomato1",
+                                        size = 15,                     # Font size
+                                        hjust = 0.5,                   # Horizontal adjustment
+                                        vjust = 3,                     # Vertical adjustment
+                                        lineheight = 1,                # Line spacing
+                                        margin = margin(20, 0, 0, 0)), # Margins (t, r, b, l)
+              plot.title.position = "plot")
+
+#Data
+work <- read_csv("work-edges.csv")
+alliance <- read_csv("alliance-edges.csv")
+nodes <- read_csv("nodes.csv")
+
+# Graphs
+g_work <- graph_from_data_frame(d =work, directed = F, vertices = nodes$Id)
+g_alliance <- graph_from_data_frame(d =alliance, directed = F, vertices = nodes$Id)
+
+# order, size, directed
+vcount(g_work)
+vcount(g_alliance)
+ecount(g_work)
+ecount(g_alliance)
+is_directed(g_work)
+is_directed(g_alliance)
+
+#plot
+par(mfrow = c(1, 2))
+igraph_options(vertex.label = NA)
+set.seed(42)
+
+plot1 <- plot(g_work, 
+              layout = layout_with_fr(g_work), 
+              vertex.color = "lightblue", 
+              vertex.size = 2, 
+              edge.color = "lightblue", 
+              edge.width = 1.0,
+              main = "Work Relationships")
+
+
+plot2<-plot(g_alliance, 
+            layout = layout_with_fr(g_alliance), 
+            vertex.color = "lightgreen", 
+            vertex.size = 2, 
+            edge.color = "lightgreen", 
+            edge.width = 1.0, 
+            main = "Political Alliances")
+
+## The graph induced by the connected component WORK
+V(g_work)$cluster <- clusters(graph = g_work)$membership
+gcc_work <- induced_subgraph(graph = g_work, vids = which(V(g_work)$cluster == which.max(clusters(graph = g_work)$csize))) 
+
+# connected component WORK plot
+vcount(gcc_work)
+ecount(gcc_work)
+
+igraph_options(vertex.label = NA)
+set.seed(42)
+plot11<-plot(gcc_work, 
+             layout = layout_with_fr(gcc_work), 
+             vertex.color = "lightblue", 
+             vertex.size = 2, 
+             edge.color = "lightblue", 
+             edge.width = 1.0)
+
+# Calculating grades to identify important nodes.
+grades <- degree(gcc_work)
+nodes_ordering <- order(grades, decreasing = TRUE)
+for (nodo in nodes_ordering) {
+  cat("Nodo", nodo, "grado:", grades[nodo], "\n")
+}
+nodes_interes <- c(1, 53, 145, 151, 154,89,94,98,116,205,329)
+
+#Filter the 'nodes' dataframe to obtain the rows corresponding to the nodes of interest.
+nodes_interes_df <- nodes[nodes_interes, ]
+print(nodes_interes_df)
+
+# Identify most important nodes
+ca<-rep("#458B74",vcount(gcc_work))
+ca[c(1,53,145,151,154)]<-"#00008B"
+ca[c(89,94,98,116,205,329)]<-"#0000FF" 
+lab<-rep(NA,vcount(gcc_work))
+lab[c(1,53,89,94,98,116,145,151,154,205,329)]<-c("Uribe","Santos","A. Ordóñez","Peñalosa",
+                                                 "Duque","V. Lleras","Pastrana","J.C. Restrepo",
+                                                 "C. Gaviria","Petro","Fajardo")
+
+#grade
+Grado <- log(degree(gcc_work))
+order(Grado, decreasing = TRUE)
+windows(16,12)
+
+#GRAPH visualization WORK
+set.seed(21)
+layout_1 <- create_layout(gcc_work, layout = "igraph", algorithm="dh")
+ggraph(layout_1)+
+  geom_edge_link(edge_colour = "328A2E", alpha=0.4)+
+  geom_node_point(aes(size = Grado/3), color= ca, alpha=0.7)+
+  geom_node_label(aes(label = lab),label.size = 0,label.padding = unit(0.2, "lines"),nudge_y = 7.5,size=4)+
+  ggtitle("Conected Component Work")+labs(size = "Grado")+
+  tema +
+  theme(legend.position = "none", plot.title = element_text(color = "#262626"))
+
+## The graph induced by the connected component ALLIANCE
+V(g_alliance)$cluster <- clusters(graph = g_alliance)$membership
+gcc_alliance <- induced_subgraph(graph = g_alliance, vids = which(V(g_alliance)$cluster == which.max(clusters(graph = g_alliance)$csize))) 
+
+#Conected component ALLIANCE plot
+set.seed(21)
+layout_a <- create_layout(gcc_alliance, layout = "igraph", algorithm="dh")
+vcount(gcc_alliance)
+ecount(gcc_alliance)
+
+# Relevant nodes
+grados1 <- degree(gcc_alliance)
+nodos_ordenados_alli <- order(grados1, decreasing = TRUE)
+for (nodo in nodos_ordenados_alli) {
+  cat("Nodo", nodo, "grado:", grados1[nodo], "\n")
+}
+
+#Identify most important nodes
+nodos_interes <- c(1,25,81,127,176, 39,54,60,93,102,175)
+nodos_interes_df <- nodes[nodos_interes, ]
+print(nodos_interes_df)
+ca_a<-rep("#458B74",vcount(gcc_alliance))
+ca_a[c(1,25,81,127,176)]<-"#8B7D6B" 
+ca_a[c(39,54,60,93,102,175)]<-"#DEB887" 
+lab_a<-rep(NA,vcount(gcc_alliance))
+lab_a[c(1,25,39,54,60,81,93,102,127,175,176)]<-c("Uribe","Santos","A. Ordóñez","Peñalosa",
+                                                 "Duque","Vargas Lleras","Pastrana","C. Gaviria",
+                                                 "Petro","J.C. Restrepo","Fajardo")
+
+Grado_al <- log(degree(gcc_alliance))
+
+#GRAPH visualization ALLIANCE
+windows(16,12)
+ggraph(layout_a)+
+  geom_edge_link(edge_colour ="#CDC5BF", alpha=0.4)+
+  geom_node_point(aes(size = Grado_al), color= ca_a, alpha=0.7)+
+  geom_node_label(aes(label = lab_a),label.size = 0,label.padding = unit(0.2, "lines"),nudge_y = 5.5,size=4.2)+
+  ggtitle("Componente gigante Red de Alianza")+labs(size = "Grado")+
+  tema +
+  theme(legend.position = "none", , plot.title = element_text(color = "#262626"))
+
+##########################Descriptive Analysis
+
+#Calculation of structural statistics
+A_DescriptivoP1 <- function(Lista){
+  Densidad      <- sapply(X = Lista, FUN = edge_density)
+  Coef_Agrupa   <- sapply(X = Lista, FUN = transitivity)
+  Asorta <- sapply(X = Lista, FUN = assortativity_degree)
+  Dist_Geod     <- sapply(X = Lista, FUN = mean_distance)
+  Comp_Gigante  <- sapply(X = Lista, FUN = function(X) (max(sapply(X = decompose(X), FUN = vcount))))
+  Grado    <- sapply(X = Lista, FUN = function(X) mean(degree(X)))
+  Desv.est <- sapply(X = Lista, FUN = function(X) sd(degree(X)))
+  Tabla         <- as.data.frame(cbind(Densidad,Coef_Agrupa,Asorta,
+                                       Dist_Geod,Comp_Gigante,Grado,Desv.est))
+  return(Tabla)
+}
+
+#Simplification of networks
+gcc_work <- simplify(gcc_work)
+gcc_alliance <- simplify(gcc_alliance)
+
+tab<-A_DescriptivoP1(list(gcc_work,gcc_alliance))
+rownames(tab)<-c("Trabajo","Alianza")
+
+xtable::xtable(tab,digits = 3)
+
+#Centrality measures
+dc <- round(degree          (graph = gcc_work, normalized = T),2)
+cc <- round(closeness       (graph = gcc_work, normalized = T),2)
+bc <- round(betweenness     (graph = gcc_work, normalized = T),2)
+ec <- round(eigen_centrality(graph = gcc_work, scale = T)$vector,2)
+
+dc2 <- round(degree          (graph = gcc_alliance, normalized = T),2)
+cc2 <- round(closeness       (graph = gcc_alliance, normalized = T),2)
+bc2 <- round(betweenness     (graph = gcc_alliance, normalized = T),2)
+ec2 <- round(eigen_centrality(graph = gcc_alliance, scale = T)$vector,2)
+
+#Centrality measures Uribe, Petro and Santos 
+xtable::xtable(rbind(
+  c("Grado","Cercanía","Intermediación","C. Propia","Grado","Cercanía","Intermediación","C. Propia"),
+  c(dc[1],cc[1],bc[1],ec[1],dc2[1],cc2[1],bc2[1],ec2[1]),
+  c(dc[205],cc[205],bc[205],ec[205],dc2[127],cc2[127],bc2[127],ec2[127]),
+  c(dc[53],cc[53],bc[53],ec[53],dc2[25],cc2[25],bc2[25],ec2[25])), digits = 3)
+
+#hierarchical cluster using cluster_fast_greedy
+
+kc <- cluster_fast_greedy(gcc_work)
+class(kc)
+length(kc)
+sizes(kc)
+membership(kc)
+plot(kc, gcc_work, vertex.size = 2)
+library(ape)
+dendPlot(kc, mode="phylo", cex = 0.1)
+
+kc1 <- cluster_fast_greedy(gcc_alliance)
+length(kc1)
+sizes(kc1)
+membership(kc1)
+plot(kc1,gcc_alliance,  vertex.size = 4)
+dendPlot(kc1, mode="phylo", cex = 0.3)
