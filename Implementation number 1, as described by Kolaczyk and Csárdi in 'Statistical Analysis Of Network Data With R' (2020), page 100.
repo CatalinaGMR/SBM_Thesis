@@ -1,0 +1,58 @@
+#libraries
+suppressMessages(suppressWarnings(library(igraph)))
+suppressMessages(suppressWarnings(library(sand)))
+library(blockmodels)
+
+#data
+data("fblog")
+str(fblog)
+class(fblog)
+help(fblog)
+str(fblog)
+
+#Using the function BM_bernoulli in blockmodels
+set.seed(42)
+A.fblog <- as.matrix(as_adjacency_matrix(fblog))
+fblog.sbm <- BM_bernoulli("SBM_sym", A.fblog, verbosity=0, plotting="")
+fblog.sbm$estimate()
+
+#Q is offered by BM_bernoulli through the so-called integration classification likelihood 
+#(ICL) criterion, similar in spirit to(AIC),(BIC)
+ICLs <- fblog.sbm$ICL
+Q <- which.max(ICLs)
+Q
+
+#Focusing solely on the model with Q = 10 classes, we can extract the estimates
+#of the posterior probability of class membership
+Z <- fblog.sbm$memberships[[Q]]$Z
+
+#These estimates may be used to determine labels for class assignments.
+cl.labs <- apply(Z,1,which.max)
+nv <- vcount(fblog)
+summary(Z[cbind(1:nv,cl.labs)])
+
+#Estimation of the parameter estimates associated with this model
+#estimates of the class proportions αq
+cl.cnts <- as.vector(table(cl.labs))
+alpha <- cl.cnts/nv
+alpha
+Pi.mat <- fblog.sbm$model_parameters[[Q]]$pi
+Pi.mat[3,] #interaction probabilities matrix
+
+##Goodness-of-Fit##
+ntrials <- 1000
+Pi.mat <- (t(Pi.mat)+Pi.mat)/2
+deg.summ <- list(ntrials)
+for(i in (1:ntrials)){
+  blk.sz <- rmultinom(1,nv,alpha)
+  g.sbm <- sample_sbm(nv,pref.matrix=Pi.mat, 
+                      block.sizes=blk.sz, 
+                      directed=FALSE)
+  deg.summ[[i]] <- summary(degree(g.sbm))
+ }
+Reduce("+",deg.summ)/ntrials
+summary(degree(fblog))
+
+#ICL as a function of the number of classes Q.
+plot(fblog.sbm$ICL,xlab="Q",ylab="ICL",type="b")
+lines(c(Q,Q),c(min(ICLs),max(ICLs)),col="red",lty=2)
