@@ -1,0 +1,109 @@
+import numpy as np
+import pymc as pm
+import aesara.tensor as at
+
+def custom_sigmoid(x):
+    return pm.math.exp(x) / (1 + pm.math.exp(x))
+
+def create_model(data_matrix, num_nodes, num_blocks, a_alpha, b_alpha, a_tau, b_tau, mu_zeta, sigma_zeta):
+    
+#---------------------------- Data  -----------------------------#
+# Considering only triangular superior
+    data_matrix = data_matrix.reshape(num_nodes * num_nodes).T
+    mask = np.triu(np.ones((num_nodes, num_nodes)), k=1).astype(bool)
+    data_matrix = data_matrix.reshape(num_nodes, num_nodes)[mask]
+
+    a_alpha
+    b_alpha
+    a_tau
+    b_tau
+    mu_zeta
+    sigma_zeta
+
+#---------------------------- Prior Parameters 1 ---------------------------#
+    with pm.Model() as SBMmodel:
+         # Alpha: Distribución Gamma para los bloques
+        alpha = pm.Gamma("alpha", alpha=a_alpha, beta=b_alpha)
+
+        # Omega: Distribución Dirichlet para las probabilidades de pertenencia a bloques
+        omega = pm.Dirichlet("omega", a=np.ones(num_blocks) * (alpha / num_blocks), shape=num_blocks)    
+            
+        # xi. Asignment vector
+        E_row = pm.Categorical('E_vector', p=omega, shape=num_nodes)
+        
+        # tau meassuring variance of probability of interaction between blocks            
+        tau2 = pm.InverseGamma("tau2", alpha=a_tau, beta=b_tau)
+
+        # zeta meassuring mean of probability of interaction between blocks 
+        zeta_raw = pm.Normal("zetafull", mu=mu_zeta, sigma=np.sqrt(sigma_zeta))
+        zeta = pm.Deterministic("zeta", custom_sigmoid(zeta_raw))
+
+
+        # Theta: Probabilidad de interacción entre bloques en la parte triangular superior
+        Theta_kl_raw = pm.Normal('Theta_klfull', mu=zeta, sigma=np.sqrt(tau2), shape=(num_blocks * (num_blocks + 1)) // 2)
+        Theta_kl = pm.Deterministic("Theta_kl", custom_sigmoid(Theta_kl_raw))
+        
+        Theta_matrix = np.zeros((num_blocks, num_blocks), dtype=object)
+        index = 0
+        for i in range(num_blocks):
+            for j in range(i, num_blocks):
+                Theta_matrix[i, j] = pm.Deterministic(f"Theta_kl_raw_{i}_{j}", Theta_kl[index])
+                Theta_matrix[j, i] = Theta_kl[index]  # simetría
+                index += 1
+
+       
+##----------------------------  Theta_E ---------------------------#
+# define the matrix Theta_E
+# Dimension: num_nodes x num_nodes 
+# Each value is the probability of interaction between two nodes depending on the block they belong to
+        # Inicializar E_matrix
+        E_matrix = np.zeros((num_blocks, num_nodes), dtype=int)
+        E_row_value = E_row.eval()  # Esto evalúa E_row como un array de NumPy
+         # Ahora iterar sobre los nodos y asignar los valores a E_matrix
+        for node_index in range(num_nodes):
+            block_index = E_row_value[node_index]  # Obtener el bloque asignado para el nodo
+            E_matrix[block_index, node_index] = 1  # Asignar 1 en la posición correspondiente
+
+        # Inicializar Theta_E_matrix
+        Theta_E_matrixind = np.zeros((num_nodes, num_nodes, 2), dtype=int)
+        indices = [np.where(E_matrix[:, i]== 1)[0][0] + 1 for i in range(num_nodes)]
+        for i in range(num_nodes):
+            for j in range(num_nodes):
+                I = indices[i]
+                K = indices[j]
+                Theta_E_matrixind[i, j] = (I, K)  # Assign the ordered pair
+
+        # Iterar sobre los pares ordenados en Theta_E_matrix
+        Theta_E_matrix = np.zeros((num_nodes, num_nodes), dtype=float)
+        for i in range(num_nodes):
+            for j in range(num_nodes):
+                coord_i, coord_j = Theta_E_matrixind[i, j]  # Par ordenado (I, K)
+                Theta_E_matrix[i, j] = Theta_matrix[coord_i - 1, coord_j - 1].eval()  # Obtener valor de Theta_matrix
+                 
+#---------------------------- Deterministic function for Likelihood ---------------------------#
+
+    def compute_bernoulli_parameters(Theta_E_matrix):
+        bernoulli_parameters = []
+        for i in range(num_nodes):
+            row = []
+            for j in range(num_nodes):
+                param = pm.math.logit(Theta_E_matrix[i][j])
+                row.append(param)
+            bernoulli_parameters.append(row)
+        return at.stack(bernoulli_parameters)
+
+        
+# Calculate the Bernoulli parameters
+        bernoulli_params = compute_bernoulli_parameters(Theta_E_matrix)
+        
+# Use pm.Deterministic to include the deterministic function in the model
+        bernoulli_parameters = pm.Deterministic('bernoulli_parameters', bernoulli_params)
+    
+# Observed data
+        y_vector = pm.Bernoulli('y_vector', p=bernoulli_parameters, value=data_matrix, observed=True)
+        #y_adyencence = pm.Bernoulli('y_matrix', p=bernoulli_parameters, observed=data_matrix)
+        
+# Log-likelihood
+        log_likelihood = pm.Deterministic("log_likelihood", SBMmodel.logp())
+
+    return SBMmodel
